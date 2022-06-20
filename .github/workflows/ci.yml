@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - gnuplot-epslatex
+    paths:
+      - .github/workflows/ci.yml
+
+jobs:
+
+  build:
+    name: Create example PDF
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          repository: 'NaokiHori/Alpine-Dockerfiles'
+          ref: 'gnuplot-epslatex'
+      - name: Install Gnuplot
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install gnuplot
+      - name: Create sources
+        run: |
+          cd example
+          gnuplot plot.gp
+      - name: Convert eps to pdf
+        run: |
+          cd example
+          docker run \
+            --rm \
+            --volume ${PWD}:/project \
+            --workdir /project \
+            naokihori/texlive:gnuplot-epslatex \
+            epstopdf result-inc.eps
+      - name: Compile TeX
+        run: |
+          cd example
+          docker run \
+            --rm \
+            --volume ${PWD}:/project \
+            --workdir /project \
+            naokihori/texlive:gnuplot-epslatex \
+            pdflatex result.tex
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Result
+          path: example/result.pdf
+
+  publish:
+    name: Push artifacts to gnuplot-epslatex-artifacts branch
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+        with:
+          repository: 'NaokiHori/Alpine-Dockerfiles'
+          ref: 'gnuplot-epslatex'
+      - name: Download artifacts
+        # download to docs/
+        uses: actions/download-artifact@v3
+        with:
+          name: Result
+          path: example
+      - name: Commit artifact
+        run: |
+          git switch -c gnuplot-epslatex-artifacts
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add example/result.pdf
+          git commit -m "Update result.pdf" -a || true
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          branch: gnuplot-epslatex-artifacts
+          directory: "."
+          github_token: ${{ secrets.MY_GITHUB_TOKEN }}
+          force: true
+
